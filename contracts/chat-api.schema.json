@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConversationRequest",
+  "type": "object",
+  "properties": {
+    "sessionId": {
+      "type": ["string", "null"]
+    },
+    "message": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["offline-demo"]
+    }
+  },
+  "required": ["message", "mode"],
+  "additionalProperties": false
+}
+

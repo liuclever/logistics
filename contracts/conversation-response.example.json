@@ -1,0 +1,43 @@
+{
+  "sessionId": "f088e8ef-87aa-4ab6-91fd-5d903af4aa50",
+  "reply": "运单 `WB202603230001` 当前状态是 **已签收**。",
+  "traceSteps": [
+    {
+      "step_id": "6d7f5844-dbd1-415e-8763-42f4af7d3056",
+      "title": "意图识别",
+      "status": "completed",
+      "summary": "识别意图为 `track_shipment`，工作流 `ReferenceResolutionWorkflow`。",
+      "kind": "decision",
+      "timestamp": "2026-03-23T14:12:00+00:00",
+      "data": {}
+    }
+  ],
+  "cards": [
+    {
+      "id": "3b6a2b0d-8f9b-4fce-b7b2-fd05feec74f1",
+      "kind": "track_timeline",
+      "title": "运输轨迹",
+      "data": {
+        "searchNumber": "WB202603230001",
+        "status": "已签收",
+        "trackItems": []
+      }
+    }
+  ],
+  "pendingAction": null,
+  "sessionState": {
+    "shipment_draft": null,
+    "quote_draft": null,
+    "pending_action": null,
+    "last_plan": null,
+    "last_trace": [],
+    "last_cards": [],
+    "stats": {
+      "total_messages": 1,
+      "successful_orders": 0,
+      "failed_orders": 0,
+      "tracking_queries": 1,
+      "quote_queries": 0
+    }
+  }
+}

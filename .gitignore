@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+dist/
+build/
+node_modules/
+coverage/
+.DS_Store
+apps/web/.vite/
+apps/web/dist/
+*.tar.gz
