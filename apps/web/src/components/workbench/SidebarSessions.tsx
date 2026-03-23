@@ -1,11 +1,10 @@
-import { Button, Card, Tag } from 'tdesign-react';
+import { Card, Tag } from 'tdesign-react';
 import type { SessionSnapshot } from '../../types/contracts';
 
 interface SidebarSessionsProps {
   sessions: SessionSnapshot[];
   activeSessionId?: string;
   onSelect: (session: SessionSnapshot) => void;
-  onNewSession: () => void;
 }
 
 function formatTime(value: string) {
@@ -21,19 +20,13 @@ function formatTime(value: string) {
   }
 }
 
-export function SidebarSessions({ sessions, activeSessionId, onSelect, onNewSession }: SidebarSessionsProps) {
+export function SidebarSessions({ sessions, activeSessionId, onSelect }: SidebarSessionsProps) {
   return (
-    <Card className="panel-card" title="当前会话">
-      <div className="session-actions">
-        <Button theme="primary" block onClick={onNewSession}>
-          新建工作台会话
-        </Button>
-      </div>
-
+    <Card className="panel-card" title="历史会话">
       <div className="session-list">
         {sessions.length === 0 ? (
           <div className="empty-inline">
-            <p>当前浏览器还没有会话记录。</p>
+            <p>当前浏览器里还没有会话记录。</p>
           </div>
         ) : (
           sessions.map((session) => {

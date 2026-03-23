@@ -1,7 +1,9 @@
 import { Card } from 'tdesign-react';
 import type { PendingAction, ResponseCard } from '../../types/contracts';
+import { ActionListCard } from './ActionListCard';
 import { ConfirmationCard } from './ConfirmationCard';
 import { PriceTableCard } from './PriceTableCard';
+import { RecentOrdersCard } from './RecentOrdersCard';
 import { ShipmentSummaryCard } from './ShipmentSummaryCard';
 import { TrackTimelineCard } from './TrackTimelineCard';
 
@@ -11,15 +13,22 @@ interface CardRendererProps {
   loading?: boolean;
   onConfirm?: () => void;
   onCancel?: () => void;
+  onSelectAction?: (prompt: string) => void;
 }
 
-export function CardRenderer({ card, pendingAction, loading, onConfirm, onCancel }: CardRendererProps) {
+export function CardRenderer({ card, pendingAction, loading, onConfirm, onCancel, onSelectAction }: CardRendererProps) {
   switch (card.kind) {
     case 'shipment_summary':
       return <ShipmentSummaryCard title={card.title} data={card.data} />;
     case 'track_timeline':
+      if (!card.data.trackItems?.length) {
+        return null;
+      }
       return <TrackTimelineCard title={card.title} data={card.data} />;
     case 'price_table':
+      if (!card.data.rows?.length) {
+        return null;
+      }
       return <PriceTableCard title={card.title} data={card.data} />;
     case 'confirmation':
       return (
@@ -32,6 +41,11 @@ export function CardRenderer({ card, pendingAction, loading, onConfirm, onCancel
           onCancel={onCancel}
         />
       );
+    case 'action_list':
+      if (!card.data.actions?.length) {
+        return null;
+      }
+      return <ActionListCard title={card.title} data={card.data} onSelectAction={onSelectAction} />;
     case 'error':
       return (
         <Card className="result-card result-card--error" title={card.title}>
@@ -39,22 +53,10 @@ export function CardRenderer({ card, pendingAction, loading, onConfirm, onCancel
         </Card>
       );
     case 'stats':
-      return (
-        <Card className="result-card" title={card.title}>
-          <div className="stats-table">
-            {(card.data.rows ?? []).map((row, index) => (
-              <div key={`stats-row-${index}`} className="stats-table__row">
-                {Object.entries(row).map(([key, value]) => (
-                  <div key={key}>
-                    <span>{key}</span>
-                    <strong>{String(value)}</strong>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </Card>
-      );
+      if (!card.data.rows?.length) {
+        return null;
+      }
+      return <RecentOrdersCard title={card.title} data={card.data} />;
     default:
       return null;
   }

@@ -1,11 +1,13 @@
 export type TraceStatus = 'completed' | 'running' | 'warning' | 'failed';
 export type TraceKind = 'decision' | 'tool' | 'validation' | 'summary';
 export type PendingActionKind = 'confirm_create_order';
+export type ActionMode = 'auto' | 'input_required' | 'confirm_required' | 'navigation';
 export type ResponseCardKind =
   | 'track_timeline'
   | 'shipment_summary'
   | 'price_table'
   | 'confirmation'
+  | 'action_list'
   | 'error'
   | 'stats';
 
@@ -40,7 +42,25 @@ export interface SessionPlan {
   confidence?: number;
   extracted_entities?: Record<string, unknown>;
   missing_slots?: string[];
+  candidate_actions?: ActionItem[];
   user_message?: string;
+}
+
+export interface ActionItem {
+  action_id: string;
+  label: string;
+  description: string;
+  mode: ActionMode;
+  tool?: string | null;
+  prompt?: string | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface ThinkingStep {
+  step_id: string;
+  label: string;
+  title: string;
+  content: string;
 }
 
 export interface WorkspaceSessionState {
@@ -100,6 +120,12 @@ export interface ConfirmationCardData {
   actionId?: string;
 }
 
+export interface ActionListCardData {
+  summary?: string;
+  actions?: ActionItem[];
+  thinkingFlow?: ThinkingStep[];
+}
+
 export interface ErrorCardData {
   message?: string;
   searchNumber?: string;
@@ -108,6 +134,34 @@ export interface ErrorCardData {
 
 export interface StatsCardData {
   rows?: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+export interface RecentOrderIdentifiers {
+  customernumber?: string;
+  systemnumber?: string;
+  waybillnumber?: string;
+  tracknumber?: string | null;
+  shortnumber?: string | null;
+}
+
+export interface RecentOrderRow {
+  identifiers?: RecentOrderIdentifiers;
+  status?: string;
+  statusname?: string;
+  channelid?: string;
+  channelname?: string;
+  countrycode?: string;
+  countryname?: string;
+  consigneename?: string;
+  consigneecity?: string;
+  consigneezipcode?: string;
+  consigneeprovince?: string;
+  consigneeaddress1?: string;
+  forecastweight?: number;
+  number?: number;
+  is_remote?: boolean;
+  created_at?: string;
   [key: string]: unknown;
 }
 
@@ -135,6 +189,12 @@ export type ResponseCard =
       kind: 'confirmation';
       title: string;
       data: ConfirmationCardData;
+    }
+  | {
+      id: string;
+      kind: 'action_list';
+      title: string;
+      data: ActionListCardData;
     }
   | {
       id: string;
@@ -175,6 +235,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   cards?: ResponseCard[];
+  suggestedActions?: string[];
   createdAt: string;
 }
 

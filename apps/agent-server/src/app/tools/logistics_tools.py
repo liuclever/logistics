@@ -26,6 +26,7 @@ class LogisticsToolRegistry:
             FunctionTool(self.create_forecast_order),
             FunctionTool(self.search_price),
             FunctionTool(self.list_orders),
+            FunctionTool(self.get_price_analysis),
             FunctionTool(self.resolve_waybill_number),
             FunctionTool(self.list_channels),
             FunctionTool(self.list_destinations),
@@ -60,6 +61,10 @@ class LogisticsToolRegistry:
 
     def list_orders(self) -> dict[str, Any]:
         return self.gateway.list_orders().model_dump(mode="json")
+
+    def get_price_analysis(self) -> dict[str, Any]:
+        """获取报价分析统计"""
+        return self.gateway.get_price_analysis().model_dump(mode="json")
 
     def resolve_waybill_number(self, search_number: str) -> dict[str, Any]:
         return self.gateway.resolve_waybill_number(search_number).model_dump(mode="json")

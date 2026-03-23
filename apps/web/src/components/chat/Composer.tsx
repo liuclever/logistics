@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowRightIcon } from 'tdesign-icons-react';
 import { Button, Textarea } from 'tdesign-react';
 
 interface ComposerProps {
@@ -23,7 +24,7 @@ export function Composer({ loading, onSend }: ComposerProps) {
     <div className="composer-shell">
       <Textarea
         value={value}
-        autosize={{ minRows: 3, maxRows: 6 }}
+        autosize={{ minRows: 2, maxRows: 6 }}
         placeholder="输入物流指令，例如：创建从深圳到洛杉矶的新货运单"
         onChange={(nextValue) => setValue(nextValue)}
         onKeydown={(_, context) => {
@@ -35,7 +36,13 @@ export function Composer({ loading, onSend }: ComposerProps) {
       />
       <div className="composer-actions">
         <span>Enter 发送，Shift + Enter 换行</span>
-        <Button theme="primary" loading={loading} onClick={() => void handleSend()}>
+        <Button
+          className="composer-send-button"
+          theme="default"
+          loading={loading}
+          onClick={() => void handleSend()}
+        >
+          <ArrowRightIcon size={16} />
           发送
         </Button>
       </div>

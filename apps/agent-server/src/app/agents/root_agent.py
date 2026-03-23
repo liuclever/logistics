@@ -16,8 +16,9 @@ from app.agents.workflows import (
     OrderLookupWorkflow,
     QuoteWorkflow,
     ReferenceResolutionWorkflow,
+    build_action_card,
 )
-from app.domain.models import AgentPlan, ResponseCard, WorkspaceSessionState
+from app.domain.models import AgentPlan, WorkspaceSessionState
 from app.observability.trace import TraceRecorder
 from app.services.planner import DeterministicPlanner
 from app.tools.logistics_tools import LogisticsToolRegistry
@@ -112,6 +113,7 @@ class RootCoordinatorAgent(BaseAgent):
             data=plan.model_dump(mode="json"),
         )
 
+        self._reset_incompatible_state(plan=plan, state=state)
         result = await self._dispatch(ctx=ctx, plan=plan, state=state, trace=trace)
         result_state = result["state"]
         result_state.last_plan = plan
@@ -156,6 +158,23 @@ class RootCoordinatorAgent(BaseAgent):
         state: WorkspaceSessionState,
         trace: TraceRecorder,
     ) -> dict[str, Any]:
+        if plan.intent == "greeting":
+            return {
+                "reply": (
+                    "你好，我可以直接帮你处理物流工作。"
+                    " 你可以继续发需求，比如“查询订单 #12345 的运输状态”、“先查一下美国报价”"
+                    " 或“创建从深圳到洛杉矶的新货运单”。"
+                ),
+                "cards": [
+                    build_action_card(
+                        title="建议动作",
+                        summary="你可以直接点击式地理解为下一步可执行任务。",
+                        actions=plan.candidate_actions,
+                    ),
+                ],
+                "pending_action": None,
+                "state": state,
+            }
         if plan.selected_workflow == "ReferenceResolutionWorkflow":
             return await self.reference_resolution.execute(
                 ctx=ctx,
@@ -190,22 +209,16 @@ class RootCoordinatorAgent(BaseAgent):
             )
         return {
             "reply": (
-                "我目前支持三类高价值动作：查轨迹、查报价、创建货运单。"
-                " 你可以试试“查询订单 #12345 的运输状态”或“创建从深圳到洛杉矶的新货运单”。"
+                "我还没把这句话稳定映射到一个明确工作流。"
+                " 你可以换成更明确的目标，我也会把可执行动作直接列给你。"
             ),
-            "cards": [
-                ResponseCard(
-                    kind="stats",
-                    title="可执行任务",
-                    data={
-                        "examples": [
-                            "查询订单 #12345 的运输状态",
-                            "帮我从深圳发一票货到洛杉矶",
-                            "先查一下美国报价",
-                        ]
-                    },
-                )
-            ],
+                "cards": [
+                    build_action_card(
+                        title="建议动作",
+                        summary="当前没有锁定工作流，建议从下面的明确动作开始。",
+                        actions=plan.candidate_actions,
+                    ),
+                ],
             "pending_action": None,
             "state": state,
         }
@@ -225,3 +238,25 @@ class RootCoordinatorAgent(BaseAgent):
         if not raw_state:
             return WorkspaceSessionState()
         return WorkspaceSessionState.model_validate(raw_state)
+
+    def _reset_incompatible_state(self, *, plan: AgentPlan, state: WorkspaceSessionState) -> None:
+        """Clear stale drafts when the user explicitly switches to another workflow."""
+
+        if plan.intent in {"provide_missing", "confirm_action"}:
+            return
+
+        if plan.selected_workflow in {"OrderLookupWorkflow", "ReferenceResolutionWorkflow", "UnknownWorkflow"}:
+            state.quote_draft = None
+            state.shipment_draft = None
+            if plan.intent != "unknown":
+                state.pending_action = None
+            return
+
+        if plan.selected_workflow == "QuoteWorkflow":
+            state.shipment_draft = None
+            if plan.intent != "greeting":
+                state.pending_action = None
+            return
+
+        if plan.selected_workflow == "CreateShipmentWorkflow":
+            state.quote_draft = None

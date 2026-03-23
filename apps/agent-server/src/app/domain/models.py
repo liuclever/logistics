@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 
 IntentName = Literal[
+    "greeting",
     "track_shipment",
     "create_shipment",
     "quote_shipment",
@@ -33,6 +34,7 @@ CardKind = Literal[
     "shipment_summary",
     "price_table",
     "confirmation",
+    "action_list",
     "error",
     "stats",
 ]
@@ -40,6 +42,7 @@ CardKind = Literal[
 TraceStatus = Literal["completed", "running", "warning", "failed"]
 TraceKind = Literal["decision", "tool", "validation", "summary"]
 PendingActionKind = Literal["confirm_create_order"]
+ActionMode = Literal["auto", "input_required", "confirm_required", "navigation"]
 
 
 class TrackEvent(BaseModel):
@@ -154,6 +157,27 @@ class ResponseCard(BaseModel):
     data: dict[str, Any]
 
 
+class AgentAction(BaseModel):
+    """A concrete next action that the workbench can show to the operator."""
+
+    action_id: str = Field(default_factory=lambda: str(uuid4()))
+    label: str
+    description: str
+    mode: ActionMode
+    tool: str | None = None
+    prompt: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+
+class ThinkingStep(BaseModel):
+    """Productized reasoning step exposed to the UI instead of raw chain-of-thought."""
+
+    step_id: str = Field(default_factory=lambda: str(uuid4()))
+    label: str
+    title: str
+    content: str
+
+
 class AgentPlan(BaseModel):
     """Planner output used by the deterministic orchestration layer."""
 
@@ -162,6 +186,7 @@ class AgentPlan(BaseModel):
     confidence: float
     extracted_entities: dict[str, Any] = Field(default_factory=dict)
     missing_slots: list[str] = Field(default_factory=list)
+    candidate_actions: list[AgentAction] = Field(default_factory=list)
     user_message: str
 
 

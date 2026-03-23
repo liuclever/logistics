@@ -31,7 +31,7 @@ export function ConfirmationCard({
         {pendingAction?.action_id ? <Tag variant="light">{pendingAction.action_id.slice(0, 8)}</Tag> : null}
       </div>
 
-      <p className="confirmation-summary">{data.summary ?? pendingAction?.summary ?? '等待确认后继续建单。'}</p>
+      <p className="confirmation-summary">{data.summary ?? pendingAction?.summary ?? '确认后将继续执行建单流程。'}</p>
 
       <div className="confirmation-draft">
         {entries.map(([key, value]) => (
@@ -44,10 +44,10 @@ export function ConfirmationCard({
 
       {onConfirm && onCancel ? (
         <div className="confirmation-actions">
-          <Button theme="primary" loading={loading} onClick={onConfirm}>
-            确认
+          <Button className="action-button" theme="default" loading={loading} onClick={onConfirm}>
+            确认执行
           </Button>
-          <Button variant="outline" onClick={onCancel}>
+          <Button className="secondary-button" theme="default" variant="outline" onClick={onCancel}>
             取消
           </Button>
         </div>

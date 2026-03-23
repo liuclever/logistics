@@ -9,12 +9,21 @@ import type {
 } from '../types/contracts';
 import { loadRecentSessions, saveRecentSessions, upsertRecentSession } from '../utils/storage';
 
+function extractSuggestedActions(text: string) {
+  const matches = [...text.matchAll(/[“"'`「](.+?)[”"'`」]/g)]
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value));
+
+  return [...new Set(matches)].slice(0, 4);
+}
+
 function createMessage(role: ChatMessage['role'], text: string, cards?: ChatMessage['cards']): ChatMessage {
   return {
     id: `${role}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     role,
     text,
     cards,
+    suggestedActions: role === 'assistant' ? extractSuggestedActions(text) : [],
     createdAt: new Date().toISOString(),
   };
 }
@@ -156,7 +165,7 @@ export function useChatSession() {
         ),
       );
     } catch {
-      // Preserve cached session state when trace refresh is unavailable.
+      // Keep cached trace and session state when refresh is unavailable.
     }
   }, []);
 

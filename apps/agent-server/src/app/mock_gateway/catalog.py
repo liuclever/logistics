@@ -329,6 +329,24 @@ class MockLogisticsGateway:
                 return str(destination["name"])
         return code
 
+    def get_price_analysis(self) -> ToolResult[dict[str, Any]]:
+        """获取报价分析统计"""
+        analysis = {
+            "total_quotes": 156,
+            "avg_price_per_kg": 45.8,
+            "top_destinations": [
+                {"country": "美国", "count": 68, "avg_price": 48.5},
+                {"country": "英国", "count": 42, "avg_price": 52.3},
+                {"country": "加拿大", "count": 28, "avg_price": 41.2},
+            ],
+            "channel_stats": [
+                {"channel": "香港TNT", "quotes": 58, "avg_price": 46.8},
+                {"channel": "美国快线", "quotes": 52, "avg_price": 44.2},
+                {"channel": "中国邮政", "quotes": 46, "avg_price": 46.5},
+            ],
+        }
+        return ToolResult(success=True, code=0, msg="获取报价分析成功", data=analysis)
+
     def _build_create_order_row(self, order: OrderSummary, message: str) -> dict[str, Any]:
         return {
             "code": 0,

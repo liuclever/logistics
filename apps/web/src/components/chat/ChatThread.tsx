@@ -9,18 +9,40 @@ interface ChatThreadProps {
   loading?: boolean;
   onConfirm?: () => void;
   onCancel?: () => void;
+  suggestions?: string[];
+  onSelectSuggestion?: (value: string) => void;
+  onSelectAction?: (value: string) => void;
 }
 
-export function ChatThread({ messages, pendingAction, loading, onConfirm, onCancel }: ChatThreadProps) {
+export function ChatThread({
+  messages,
+  pendingAction,
+  loading,
+  onConfirm,
+  onCancel,
+  suggestions = [],
+  onSelectSuggestion,
+  onSelectAction,
+}: ChatThreadProps) {
   if (messages.length === 0) {
     return (
       <Card className="chat-welcome">
         <div className="welcome-block">
-          <p className="eyebrow">Logistics Operations Console</p>
-          <h2>不是聊天玩具，而是业务工作台。</h2>
-          <p>
-            你可以直接查询订单、发起建单、追踪轨迹和进入确认流。右侧会同步显示执行轨迹与当前工作流状态。
-          </p>
+          <h2>有什么我能帮你的吗？</h2>
+          {suggestions.length ? (
+            <div className="welcome-actions">
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  className="welcome-action"
+                  onClick={() => onSelectSuggestion?.(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       </Card>
     );
@@ -41,6 +63,7 @@ export function ChatThread({ messages, pendingAction, loading, onConfirm, onCanc
                   loading={loading}
                   onConfirm={onConfirm}
                   onCancel={onCancel}
+                  onSelectAction={onSelectAction}
                 />
               ))}
             </div>
