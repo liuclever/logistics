@@ -1,281 +1,347 @@
 # ADK Logistics Agent Workbench
 
-一个围绕 **Google ADK** 构建的物流智能体工作台后端方案，用于完成“基于物流 API 文档实现 AI Agent 工作流”的实践任务。
+一个基于 **Google ADK** 的物流智能体工作台。项目目标不是做一个普通聊天机器人，而是实现一个可演示、可测试、可扩展的 **物流业务 Agent 系统**，能够围绕物流 API 文档完成查询、报价、建单和多轮补槽等工作流。
 
-本项目当前重点完成的是 **后端智能体系统**：使用 Google ADK 作为主框架，在没有真实物流 API 凭证、也不依赖真实在线 LLM Key 的前提下，搭建一个**可运行、可测试、可演示、可扩展**的物流业务智能体后端。
+支持的典型请求：
 
----
-
-## 1. 项目目标
-
-这个项目要解决的不是“做一个聊天机器人”，而是把物流业务需求抽象成一个真正的 Agent 系统。
-
-目标包括：
-
-- 能理解类似以下请求：
-  - `查询订单 #12345 的运输状态`
-  - `创建从深圳到洛杉矶的新货运单`
-  - `先查一下美国报价`
-- 能基于物流 API 文档模拟真实接口行为
-- 能处理多轮补槽、状态延续、确认执行、结构化结果返回
-- 保持代码结构清晰，接近真实生产系统的分层设计
+- `查询订单 #12345 的运输状态`
+- `创建从深圳到洛杉矶的新货运单`
+- `先查一下美国报价 3kg 1件`
+- `查询最近订单`
 
 ---
 
-## 2. 为什么选 Google ADK
+## 1. 项目概览
 
-题目明确要求使用 **Google ADK**，因此本项目将 ADK 作为唯一主框架，而不是用 LangGraph、LangChain 或其他框架替代。
+### 目标
 
-本项目实际使用到的 ADK 核心能力包括：
+- 使用 **Google ADK** 作为 Agent 主框架
+- 在没有真实 API 凭证的情况下，基于文档模拟物流 API
+- 让系统能够处理结构化业务流程，而不是只返回一句自然语言
+- 输出前端可直接消费的 `reply / cards / traceSteps / pendingAction / sessionState`
 
-- `BaseAgent`
-- `InMemoryRunner`
-- `Event`
-- `FunctionTool`
+### 当前技术方案
 
-这里的取舍是：
-
-- **遵守题目要求**：主框架必须是 ADK
-- **保证可演示性**：当前版本采用离线 deterministic planner，不依赖真实在线模型
-- **保证可扩展性**：后续如果需要接入 Gemini 或其他 LLM，只替换 planner / orchestration 层即可，不需要重写业务工作流
-
----
-
-## 3. 整体设计思路
-
-后端采用“**会话状态 + 规划层 + 工作流层 + 工具层 + Mock Gateway**”的结构。
-
-### 3.1 设计原则
-
-- **Agent 负责编排，不直接耦合业务细节**
-- **工具层负责调用能力，不负责对话状态**
-- **会话状态由后端统一持有，不让前端伪造业务状态机**
-- **Mock 数据结构尽量贴近物流文档字段**
-- **前端可观测信息由后端生成，避免前端自行猜测执行过程**
-
-### 3.2 后端执行链路
-
-每轮请求的后端链路如下：
-
-1. 接收用户消息
-2. 从 ADK session 中恢复当前会话状态
-3. 由 deterministic planner 识别意图和抽取实体
-4. 将请求分发到对应 workflow
-5. workflow 校验槽位、调用工具、记录 trace
-6. 根协调 agent 汇总：
-   - `reply`
-   - `traceSteps`
-   - `cards`
-   - `pendingAction`
-   - `sessionState`
-7. 以 ADK `Event` 的形式返回最终结果
+- 后端：Python + FastAPI + Google ADK
+- 前端：React + TypeScript + Vite + TDesign
+- Planner：离线 deterministic planner
+- API：Mock Gateway，模拟真实物流接口行为
 
 ---
 
-## 4. 后端分层结构
+## 2. 架构设计
+
+### 后端架构
 
 ```text
-apps/
-  agent-server/
-    src/app/
-      agents/          ADK agents and workflows
-      api/             FastAPI routes
-      domain/          typed models and contracts
-      mock_gateway/    logistics API simulation
-      observability/   trace recorder
-      services/        planner and business services
-      tools/           ADK tool wrappers
-contracts/            shared JSON-schema style examples
-docs/
-  adr/                architecture decisions
-  frontend-handoff.md frontend implementation handoff
+apps/agent-server/src/app/
+  agents/          Root Agent + workflow agents
+  api/             FastAPI routes
+  domain/          typed models and contracts
+  mock_gateway/    mock logistics API implementation
+  observability/   trace recorder
+  services/        planner and business helpers
+  tools/           ADK FunctionTool wrappers
 ```
 
-### 4.1 `domain`
+核心职责划分：
 
-负责定义系统中最核心的结构化模型，见：
+- `RootCoordinatorAgent`：负责任务路由和结果汇总
+- `DeterministicPlanner`：负责意图识别、实体抽取、补槽判断、候选动作生成
+- `Workflow Agents`：负责具体业务流
+- `Tool Registry`：把物流能力包装成 ADK `FunctionTool`
+- `Mock Gateway`：模拟物流 API 的返回结构和业务场景
+- `Trace Recorder`：记录决策、校验、工具调用、汇总步骤
 
-- [models.py](./apps/agent-server/src/app/domain/models.py)
-
-关键对象包括：
-
-- `ConversationRequest`
-- `ConversationResponse`
-- `WorkspaceSessionState`
-- `ShipmentDraft`
-- `QuoteDraft`
-- `TraceStep`
-- `PendingAction`
-- `ResponseCard`
-- `ToolResult`
-
-这一层的意义是统一：
-
-- API contract
-- session state
-- workflow 输入输出
-- 前端渲染载荷
-
-### 4.2 `services`
-
-负责规划与槽位管理，当前实现见：
-
-- [planner.py](./apps/agent-server/src/app/services/planner.py)
-
-它负责：
-
-- 意图识别
-- 规则化实体抽取
-- 建单 / 报价 draft 合并
-- 缺失槽位判断
-- 确认语义判断
-
-当前 planner 是 deterministic 的，便于离线演示和稳定测试。
-
-### 4.3 `agents`
-
-负责 ADK agent 组织与 workflow 编排：
-
-- [root_agent.py](./apps/agent-server/src/app/agents/root_agent.py)
-- [workflows.py](./apps/agent-server/src/app/agents/workflows.py)
-
-#### Root Agent
-
-根协调 agent 只做三件事：
-
-- 识别意图
-- 选择 workflow
-- 汇总输出
-
-#### Workflow Agents
-
-当前包含的 workflow：
+当前 workflow 包括：
 
 - `ReferenceResolutionWorkflow`
 - `TrackShipmentWorkflow`
-- `CreateShipmentWorkflow`
 - `QuoteWorkflow`
 - `OrderLookupWorkflow`
+- `CreateShipmentWorkflow`
 
-这样拆分是为了让每个业务流有清晰边界，而不是把所有逻辑塞进一个超大 agent。
+### 前端架构
 
-### 4.4 `tools`
+```text
+apps/web/src/
+  api/             frontend API client
+  components/      cards / chat / trace / workbench
+  hooks/           local session hook
+  styles/          global workbench styles
+  types/           frontend contracts
+  utils/           display and storage helpers
+```
 
-工具层见：
+页面采用三栏工作台：
 
-- [logistics_tools.py](./apps/agent-server/src/app/tools/logistics_tools.py)
+- 左侧：导航、历史会话、快捷任务、统计概览
+- 中间：聊天线程、业务结果卡片、输入区
+- 右侧：执行轨迹、工作编排流、确认状态
 
-作用：
+设计原则：
 
-- 把 mock gateway 的业务能力包装成 ADK `FunctionTool`
-- 为 workflow 层提供统一调用入口
+- 前端只负责渲染结构化数据
+- 后端负责业务状态、工作流控制和确认逻辑
+- 不把业务状态机放在前端浏览器里
 
-当前覆盖的高价值工具：
+---
+
+## 3. 工具系统设计
+
+当前高价值工具包括：
 
 - `track_order`
 - `create_order`
 - `create_forecast_order`
 - `search_price`
 - `list_orders`
+- `get_price_analysis`
 - `resolve_waybill_number`
 - `list_channels`
 - `list_destinations`
 - `list_product_types`
 - `list_currencies`
 
-### 4.5 `mock_gateway`
+工具层原则：
 
-见：
+- 工具只负责“能力调用”
+- Workflow 负责“业务流程”
+- Planner 负责“路由与补槽”
 
-- [catalog.py](./apps/agent-server/src/app/mock_gateway/catalog.py)
-
-作用：
-
-- 模拟物流 API 文档中的核心接口
-- 提供固定种子数据和失败场景
-- 保持返回字段尽量贴近原文档风格
-
-已覆盖场景：
-
-- 正常查轨迹
-- 单号解析失败
-- 正常报价
-- 指定渠道不支持报价
-- 创建草稿单
-- 草稿单重复更新
-- 预报单重复拒绝
-
-### 4.6 `observability`
-
-见：
-
-- [trace.py](./apps/agent-server/src/app/observability/trace.py)
-
-后端显式记录以下类型的步骤：
-
-- `decision`
-- `validation`
-- `tool`
-- `summary`
-
-这样前端右侧 trace 面板可以直接渲染，不需要自己猜“这一步是做什么的”。
+这样可以避免把所有逻辑都塞到一个 Agent 或一个 Prompt 中。
 
 ---
 
-## 5. 关键业务设计
+## 4. 错误处理与边界情况
 
-### 5.1 查轨迹为什么先做引用解析
+项目里重点考虑了以下边界：
 
-题目里的“订单号 #12345”在物流系统里未必是最终运单号，它可能是：
+- 单号可能是客户参考号、系统单号或运单号，因此先做引用解析
+- 建单属于 destructive action，必须先确认再执行
+- 报价和建单都支持多轮补槽，不要求用户一次性填完
+- 单号不存在、渠道不支持、目的地不支持、重复参考号等都会返回结构化错误卡片
+- 后端统一输出 trace，前端不自行猜测流程
 
-- 客户参考号
-- 系统单号
-- 运单号
+已覆盖的典型场景：
 
-因此不能直接查轨迹，而是先走：
+- 正常查轨迹
+- 查不到单号
+- 正常报价
+- 报价字段不全
+- 指定渠道不支持
+- 创建草稿单
+- 重复参考号
+- 用户确认 / 取消建单
 
-1. `resolve_waybill_number`
-2. 再调用 `track_order`
+---
 
-这就是 `ReferenceResolutionWorkflow` 的职责。
+## 5. 我的思考过程
 
-### 5.2 创建货运单为什么必须多轮补槽
+这次实现不是直接上手写代码，而是先把它当成一个完整产品去拆。
 
-建单不是单步动作，而是典型多轮业务流。当前后端流程是：
+### 5.1 先用 GPT 做产品头脑风暴
 
-1. 抽取用户已给字段
-2. 合并到 `ShipmentDraft`
-3. 检查必填槽位
-4. 如果缺字段，逐项追问
-5. 如果字段齐全，生成 `pendingAction`
-6. 用户回复 `确认` 后才真正调用 `create_order`
+第一步不是写接口，而是先明确这到底要交付什么。
 
-这样可以避免：
+我先用 GPT 做了产品层面的头脑风暴，核心目的是回答三个问题：
 
-- 前端自己维护建单状态机
-- 模型幻觉直接“默认字段”
-- 未确认就执行 destructive action
+- 这个项目的本质是聊天机器人，还是物流工作台
+- 用户真正要完成的动作是什么
+- 前后端分别应该承担什么职责
 
-### 5.3 为什么不把确认做成单独接口
+经过这一步，方向被明确为：
 
-当前确认流程仍然走 `POST /api/chat`，用户点击确认按钮时，前端只发送字面消息：
+- 这不是一个普通问答页，而是一个 **物流智能体工作台**
+- 核心价值不是“回答一句话”，而是“把物流动作编排出来”
+- 前端负责承接结构化结果，后端负责状态、流程、工具和决策摘要
 
-- `确认`
-- `取消`
+### 5.2 再用 AI 做原型和交互逻辑确认
+
+方向确定后，没有马上进入实现，而是先用 AI 产出原型和页面逻辑。
+
+这个阶段主要确认：
+
+- 三栏工作台是否合理
+- 聊天区、执行轨迹区、工作编排流是否需要同时存在
+- 用户是更多依赖手输，还是应该多用动作气泡和确认卡片
+- 哪些信息该前台展示，哪些信息必须隐藏
+
+最终确定的原型逻辑是：
+
+- 左侧做导航、会话和快捷任务
+- 中间做聊天和业务结果卡片
+- 右侧做 trace 和 workflow 可视化
+- AI 思考过程不直接暴露原始 chain-of-thought，只展示产品化决策摘要
+
+### 5.3 用 AI 分工协作，而不是把所有代码混在一起
+
+在实现阶段，我把 AI 协作拆成了 3 类角色，而不是让一个 AI 同时承担所有事情。
+
+#### 产品主管 AI
+
+负责：
+
+- 拆分任务
+- 约束前后端边界
+- 检查接口契约
+- 审查页面是否符合原型目标
+- 做最终联调检查
+
+它更像项目里的产品负责人加技术协调者。
+
+#### 前端 AI
+
+负责：
+
+- 按约定好的 contract 开发 React + TDesign 工作台
+- 实现聊天区、结果卡片、轨迹面板、工作编排流
+- 不自创业务状态，不额外发明后端协议
+
+#### 后端 AI
+
+负责：
+
+- 设计 Google ADK Agent 架构
+- 拆 Root Agent、Planner、Workflow、Tool、Mock Gateway
+- 维护 session state
+- 输出结构化 cards / traceSteps / pendingAction / sessionState
+
+### 5.4 前后端协作的关键约定
+
+前后端开发不是各写各的，而是先约定协议，再并行开发。
+
+约定内容包括：
+
+- 统一聊天入口 `POST /api/chat`
+- 统一 trace 查询入口 `GET /api/sessions/{sessionId}/trace`
+- 前端不单独创建确认接口
+- 确认和取消都回到聊天主入口
+- 后端只输出结构化卡片，不输出不可控的长文本推理
+- 前端只负责展示，不在浏览器里维护业务状态机
+
+这套约定的核心目的是：
+
+- 降低并行开发时的摩擦
+- 避免前后端反复返工
+- 保证系统边界清晰
+
+### 5.5 最后由“产品主管 AI”做收口检查
+
+当前后端和前端各自完成后，再由一个更偏“产品 / 协调 / 验收”的角色统一检查：
+
+- 页面交互是否符合最初原型
+- 后端返回的数据是否真的适合前端渲染
+- 有没有出现字段正确但体验别扭的问题
+- 用户是不是被迫输入太多内容
+- 流程是否真的像“工作台”，而不是拼凑的 demo
+
+这一轮检查推动了后续优化，例如：
+
+- 把普通动作提示改成动作卡片和可点击气泡
+- 增加工作编排流可视化
+- 把“AI 思考流”改成可折叠的决策摘要
+- 把最近订单从原始对象平铺改成格式化订单卡
+
+### 5.6 最后通过自制 MCP 做部署
+
+在交付阶段，我使用自制 MCP 工具链辅助部署和联调，而不是把部署当成最后单独补的一步。
+
+这样做的价值在于：
+
+- 可以把开发、验证、部署衔接起来
+- 能更快发现前后端集成问题
+- 更接近真实工程里“开发完成后立即验证可上线性”的节奏
+
+总结来说，这次项目的实现方式并不是“一个 AI 从头写到尾”，而是：
+
+1. 用 GPT 做产品头脑风暴，确定方向
+2. 用 AI 出原型，确认交互逻辑
+3. 用多角色 AI 分工协作前后端开发
+4. 用一个更高层的 AI 角色做验收和收口
+5. 最后结合自制 MCP 做部署与验证
+
+这套过程本身也是我想展示的能力：**不仅能写代码，还能把 AI 作为产品和工程协作工具，组织成一套完整交付流程。**
+
+---
+
+## 6. 为什么当前版本是离线 Demo
+
+当前版本明确采用：
+
+- Google ADK runtime
+- deterministic planner
+- mock logistics gateway
 
 原因是：
 
-- 保持 agent 对话统一入口
-- 不引入额外确认 API
-- 会话上下文仍然由后端 session state 统一维护
+- 没有真实物流 API 凭证
+- 需要保证演示稳定性
+- 重点是展示 Agent 设计能力，而不是依赖在线模型能力
+
+后续如果接入真实 LLM，只需要替换 Planner 层，不需要重写 Workflow 与工具层。
 
 ---
 
-## 6. 对外 API
+## 7. 安装与运行
+
+### 环境要求
+
+- Python `3.12.x`
+- Node.js `18+`
+
+### 后端安装
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .\apps\agent-server[dev]
+```
+
+### 启动后端
+
+```powershell
+cd .\apps\agent-server
+..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir src --host 127.0.0.1 --port 8011 --reload
+```
+
+### 前端安装
+
+```powershell
+cd .\apps\web
+npm install
+```
+
+### 启动前端
+
+```powershell
+cd .\apps\web
+npm run dev
+```
+
+### 运行测试
+
+后端：
+
+```powershell
+cd .\apps\agent-server
+..\..\.venv\Scripts\python.exe -m pytest -q
+```
+
+前端：
+
+```powershell
+cd .\apps\web
+npm run build
+```
+
+---
+
+## 8. 关键接口
 
 ### `POST /api/chat`
 
-请求：
+请求示例：
 
 ```json
 {
@@ -285,7 +351,7 @@ docs/
 }
 ```
 
-响应字段：
+响应包括：
 
 - `sessionId`
 - `reply`
@@ -296,184 +362,68 @@ docs/
 
 ### `GET /api/sessions/{sessionId}/trace`
 
-返回该 session 最新的：
+返回当前会话最新的：
 
 - `traceSteps`
 - `sessionState`
 
-相关代码见：
-
-- [routes.py](./apps/agent-server/src/app/api/routes.py)
-
 ---
 
-## 7. 当前实现的能力边界
+## 9. 当前已实现能力
 
-已实现：
-
-- 查运单轨迹
-- 解析模糊编号
-- 查报价
-- 创建货运单
+- 查轨迹
+- 单号解析
+- 报价试算
+- 最近订单查询
+- 建单
 - 多轮补槽
-- 建单确认
-- recent orders 查询
-- 后端 trace 输出
-
-未实现：
-
-- 标签下载
-- 附件下载
-- 收货图片上传
-- 真实物流 API 凭证接入
-- 真实 Gemini / live LLM
-- 持久化数据库
+- 确认 / 取消
+- Trace 面板
+- 工作编排流
+- AI 思考流摘要
 
 ---
 
-## 8. 为什么当前版本不用真实 LLM
+## 10. 后续可扩展方向
 
-因为这次任务要求里：
-
-- 没有提供真实物流 API 凭证
-- 当前目标是稳定展示 agent 设计能力，而不是追求模型开放式生成
-
-所以当前选择是：
-
-- **ADK 保留**
-- **Planner 离线 deterministic**
-- **Workflow 保持企业级分层**
-
-这让系统有几个明显优点：
-
-- 可本地直接运行
-- 测试稳定
-- 演示不会受外部模型或网络波动影响
-- 未来升级真实 LLM 时只需替换 planner 层
+- 接入真实物流 API
+- 接入真实 LLM planner
+- 引入数据库持久化
+- 增加权限 / 策略 / 审计层
+- 补更多物流 API 能力
 
 ---
 
-## 9. 环境要求
+## 11. 相关文件
 
-- Python `3.12.x`
+后端核心：
 
-注意：
+- [root_agent.py](./apps/agent-server/src/app/agents/root_agent.py)
+- [workflows.py](./apps/agent-server/src/app/agents/workflows.py)
+- [planner.py](./apps/agent-server/src/app/services/planner.py)
+- [models.py](./apps/agent-server/src/app/domain/models.py)
+- [logistics_tools.py](./apps/agent-server/src/app/tools/logistics_tools.py)
+- [catalog.py](./apps/agent-server/src/app/mock_gateway/catalog.py)
 
-- 当前机器默认 `Python 3.14 beta` 与 `google-adk` 不兼容
-- 本项目开发时已切换到 `Python 3.12`
+前端核心：
 
----
-
-## 10. 安装与运行
-
-### 10.1 创建虚拟环境
-
-Windows PowerShell：
-
-```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e .\apps\agent-server[dev]
-```
-
-### 10.2 启动后端
-
-```powershell
-cd .\apps\agent-server
-..\..\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir src --host 127.0.0.1 --port 8011 --reload
-```
-
-如果你直接在仓库根目录执行，也可以改成绝对路径方式。
-
-### 10.3 运行测试
-
-```powershell
-cd .\apps\agent-server
-..\..\.venv\Scripts\python.exe -m pytest -q
-```
+- [App.tsx](./apps/web/src/App.tsx)
+- [useChatSession.ts](./apps/web/src/hooks/useChatSession.ts)
+- [CardRenderer.tsx](./apps/web/src/components/cards/CardRenderer.tsx)
+- [ActionListCard.tsx](./apps/web/src/components/cards/ActionListCard.tsx)
+- [RecentOrdersCard.tsx](./apps/web/src/components/cards/RecentOrdersCard.tsx)
+- [TraceTimeline.tsx](./apps/web/src/components/trace/TraceTimeline.tsx)
+- [OrchestrationFlow.tsx](./apps/web/src/components/workbench/OrchestrationFlow.tsx)
 
 ---
 
-## 11. 已验证结果
+## 12. 结论
 
-当前后端已完成本地验证：
+这个项目的重点不是“做一个能聊天的页面”，而是：
 
-- `pytest` 通过
-- 本地 `uvicorn` 成功启动
-- `/docs` 可访问
-- `/api/chat` 可返回真实结果
+- 用 Google ADK 正确组织智能体和工具系统
+- 用清晰的分层方式实现业务编排
+- 让错误处理、补槽、确认、轨迹输出都结构化
+- 让前端成为真正的工作台，而不是被动文本容器
 
-示例请求：
-
-- `查询订单 #12345 的运输状态`
-
-示例返回效果：
-
-- `reply` 正常
-- `cards` 返回 2 个
-- `traceSteps` 返回 5 个
-
----
-
-## 12. 示例提示词
-
-- `查询订单 #12345 的运输状态`
-- `创建从深圳到洛杉矶的新货运单`
-- `先查一下美国报价 2kg 1件`
-- `渠道用香港TNT 参考号 SZ-LA-1001 1件 2kg 收件人 Alice 地址 123 Main Street`
-- `确认`
-- `取消`
-
----
-
-## 13. 前端协作说明
-
-前端实现说明已单独写入：
-
-- [frontend-handoff.md](./docs/frontend-handoff.md)
-
-这份文档明确了：
-
-- 页面布局
-- 组件结构
-- API contract
-- trace 和 cards 的渲染规则
-- pendingAction 的确认逻辑
-- 视觉规范
-
----
-
-## 14. ADR
-
-已补充三份架构决策记录：
-
-- [0001-adk-as-core.md](./docs/adr/0001-adk-as-core.md)
-- [0002-offline-deterministic-planner.md](./docs/adr/0002-offline-deterministic-planner.md)
-- [0003-workflow-first-orchestration.md](./docs/adr/0003-workflow-first-orchestration.md)
-
----
-
-## 15. 后续可扩展方向
-
-如果继续往生产方向推进，优先级建议如下：
-
-1. 将 `MockLogisticsGateway` 替换成真实 HTTP client
-2. 接入持久化 session / database
-3. 将 deterministic planner 替换为真实 LLM planner
-4. 增加 tool-level policy / auth / audit
-5. 增加更完整的物流 API 覆盖范围
-
----
-
-## 16. 当前结论
-
-这个版本的重点不是“模型多聪明”，而是：
-
-- ADK 框架使用正确
-- 工作流分层明确
-- 会话状态清晰
-- 工具边界清晰
-- 对前端输出结构稳定
-- 可以本地运行和测试
-
-这使它更像一个真正可交付的 AI Agent 后端，而不是一个只有 prompt 的 demo。
+这也是我对这个任务的理解：**交付的是一个有产品逻辑、有工程边界、有可扩展性的 AI Agent 系统。**
